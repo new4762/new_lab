@@ -25,6 +25,9 @@ aws --endpoint-url=http://localhost:4566 --no-sign-request <service> <command> [
 # Create a Bucket
 aws --endpoint-url=http://localhost:4566 --no-sign-request s3 mb s3://my-temp-bucket
 
+# Example for core bucket
+aws --endpoint-url=http://localhost:4566 --no-sign-request s3 mb s3://omise-core-local
+
 #List Buckets
 aws --endpoint-url=http://localhost:4566 --no-sign-request s3 ls
 

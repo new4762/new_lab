@@ -1,0 +1,155 @@
+syntax = "proto3";
+
+package omise.proto.backend.errors;
+
+option go_package = "/proto";
+
+// Describe payment failure when provider declines payment.
+//
+// For example, if provider declines payment with wrong credit card number reason,
+// a service should respond with Failure message containing INVALID_ACCOUNT code
+// and "Incorrect credit card number" message.
+//
+// Service client should fail payment and may decide the failure reason from Failure.Code.
+message Failure {
+  // A message type describe failure code reason.
+  enum Code {
+    // Unable to process payment due to technical error.
+    FAILED_PROCESSING = 0;
+
+    // Provider rejects a payment.
+    PAYMENT_REJECTED = 1;
+
+    // Invalid customer account on provider or issuer system.
+    INVALID_ACCOUNT = 2;
+
+    // Provider indicates that a source of fund is lost/stolen.
+    //
+    // This field is for backward compatibility until we decide to deprecate
+    // this code.
+    STOLEN_OR_LOST_CARD = 3;
+
+    // Customer account doesn't have enough fund to complete a payment.
+    INSUFFICIENT_FUND = 4;
+
+    // Provider may return failed fraud check in case that we use their fraud
+    // detection feature.
+    FAILED_FRAUD_CHECK = 5;
+
+    // Provider decides that this payment had exceeded its payment period.
+    PAYMENT_EXPIRED = 6;
+
+    // The validation may failed for the ACS (3-D Secure) payment.
+    VALIDATION_FAILED = 7;
+
+    // Network problem when connecting to other Omise systems.
+    NETWORK_ERROR = 8;
+
+    // For use with Visa & Mastercard
+    CVV2_VALIDATION_FAILED = 9;
+
+    // For use with Visa & Mastercard
+    AVS_VALIDATION_FAILED = 10;
+
+    // For use with Visa
+    DUPLICATE_TRANSMISSION = 11;
+
+    // Customer cancelled the transaction
+    PAYMENT_CANCELLED = 12;
+
+    // Provider did not respond in time.
+    PROVIDER_TIMEOUT = 13;
+
+    // Provider was unavailable (down).
+    PROVIDER_UNAVAILABLE = 14;
+
+    // Unknown error pending inquiry retry.
+    PENDING_RETRY = 15;
+
+    // Too many requests in a given amount of time (rate limiting).
+    RATE_LIMIT_EXCEEDED = 16;
+
+    // Card had expired
+    EXPIRED_CARD = 17;
+  }
+
+  Code code = 1;
+  string message = 2;
+  string custom_message = 3;
+  string provider_code = 4;
+  string provider_message = 5;
+}
+
+// Describe refund failure when provider declines refund.
+//
+// Service client should fail refund and may decide the failure reason from Failure.Code.
+message RefundFailure {
+  enum Code {
+    // Unable to refund due to technical error.
+    FAILED_PROCESSING = 0;
+
+    // Insufficient payment amount.
+    EXCEEDED_AMOUNT = 1;
+
+    // Payment already settled and cannot be voided. When voiding payment.
+    ALREADY_SETTLED = 2;
+
+    // Provider did not respond in time.
+    PROVIDER_TIMEOUT = 3;
+
+    // Provider was unavailable (down).
+    PROVIDER_UNAVAILABLE = 4;
+  }
+
+  Code code = 1;
+  string message = 2;
+}
+
+message SendSettlementFailure {
+  enum Code {
+    // Unable to send settlement due to technical error.
+    FAILED_PROCESSING = 0;
+  }
+
+  Code code = 1;
+  string message = 2;
+}
+
+// Describe credentials processes failure.
+message CredentialFailure {
+  enum Code {
+    // Unable to process credential due to technical error or provider may return failed.
+    FAILED_PROCESSING = 0;
+  }
+
+  Code code = 1;
+  string message = 2;
+}
+
+// Describe linked account failure when provider declines register/deregister.
+message LinkedAccountFailure {
+  enum Code {
+    // Unable to process a request due to technical error.
+    FAILED_PROCESSING = 0;
+
+    // Provider rejects a registration request.
+    REGISTRATION_REJECTED = 1;
+
+    // Invalid customer account on provider system.
+    INVALID_ACCOUNT = 2;
+
+    // Provider did not respond in time.
+    PROVIDER_TIMEOUT = 3;
+
+    // Provider was unavailable (down).
+    PROVIDER_UNAVAILABLE = 4;
+
+    // Too many requests in a given amount of time (rate limiting).
+    RATE_LIMIT_EXCEEDED = 5;
+  }
+
+  Code code = 1;
+  string message = 2;
+  string provider_code = 3;
+  string provider_message = 4;
+}

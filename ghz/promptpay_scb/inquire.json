@@ -1,0 +1,75 @@
+{
+    "proto": "proto/backend.proto",
+    "call": "omise.proto.backend.PaymentService.Inquire",
+    "total": 2000,
+    "concurrency": 1,
+    "insecure": true,
+    "data": {
+        "live_mode": true,
+        "payment_adapter": {
+            "identifier": "promptpay"
+        },
+        "payment": {
+            "amount": {
+                "divider": 100,
+                "currency": "THB",
+                "value": 9200
+            },
+            "address": "[FILTERED]",
+            "payment_references": {
+                "reference_number_6": "RequestUid: 465f4f4c-dc49-4bc4-b1ec-59ca30299c1b",
+                "reference_number_3": "EXP20250719125157",
+                "reference_number_1": "64EZR1WXTD22L9HPCLZ"
+            },
+            "return_uri": "[FILTERED]",
+            "merchant_category_code": "5262",
+            "merchant_postal_code": "10500",
+            "statement_name": "OMISE*TikTokShop Seller",
+            "charge_uid": "chrg_64ezr1wwfkernen7lxh",
+            "tax_id": "0105567016572",
+            "country_code": "TH",
+            "uid": "pay2_64ezr1wxtd22l9hpclz",
+            "account_id": "135577",
+            "merchant_country_code": "TH",
+            "website_url": "https://www.tiktok.com/",
+            "live_mode": true,
+            "account_uid": "account_5stmj8w5xdt3fe3ccy8",
+            "payment_source": {
+                "original_backend_id": "promptpay",
+                "amount": {
+                    "divider": 100,
+                    "currency": "THB",
+                    "value": 9200
+                },
+                "type": "promptpay",
+                "qr_settings": {
+                    "include_raw_data": true
+                }
+            },
+            "skip_avs": true,
+            "status": "pending"
+        },
+        "basic": {
+            "credentials": {
+                "data": {
+                    "api_key": "[FILTERED]",
+                    "biller_id": "010555609115211",
+                    "api_secret": "[FILTERED]"
+                },
+                "merchant_id": "[FILTERED]"
+            },
+            "backend_configurations": {
+                "qr_expiry_period": "1440",
+                "api_base_url": "https://api.partners.scb/partners"
+            }
+        },
+        "psp": {
+            "country_code": "TH",
+            "identifier": "omise_thailand",
+            "is_internal": true,
+            "name": "[FILTERED]"
+        }
+    },
+    "max-duration": "10s",
+    "host": "0.0.0.0:50051"
+}

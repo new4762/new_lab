@@ -9,4 +9,4 @@ services:
       - SERVICES=s3     # Enable S3 service
       - AWS_DEFAULT_REGION=us-east-1
       - DEBUG=1         # Optional: Enable debug logs
-    restart: always      # Automatically restart when Docker starts
+    # restart: always      # Automatically restart when Docker starts

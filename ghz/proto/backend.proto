@@ -1,0 +1,2399 @@
+syntax = "proto3";
+
+package omise.proto.backend;
+
+import "google/protobuf/timestamp.proto";
+import "errors.proto";
+
+option go_package = "/proto";
+
+// RPC service interface related to a capability.
+service CapabilityService {
+  // Retrieve additional capability data of a backend.
+  rpc Retrieve (CapabilityRetrieveRequest) returns (CapabilityRetrieveResponse);
+}
+
+// RPC service interface related to a payment source.
+service SourceService {
+  // Process a payment source by validating if it can be used to create a charge
+  // and sanitize the source data.
+  rpc Process (SourceProcessRequest) returns (SourceProcessResponse);
+}
+
+// RPC service interface related to payment pre-authorization. An example is credit card
+// pre-authorizing in order to check if the card is valid or not.
+service PreauthService {
+  // Generate pre-authorization payload.
+  //
+  // Generate pre-authorization payload for the given credit card information.
+  // The response will be modified by Vault to fill-in the PAN before forwarding
+  // to the acquirer bank.
+  rpc Payload (PreauthPayloadRequest) returns (PreauthPayloadResponse);
+
+  // Process pre-authorization response.
+  //
+  // Consume pre-authorization response returned from acquirer bank.
+  rpc Process (PreauthProcessRequest) returns (PreauthProcessResponse);
+
+  // Cleanup pre-authorization response.
+  //
+  // Cleanup pre-authorization when necessary.
+  rpc Cleanup (PreauthCleanupRequest) returns (PreauthCleanupResponse);
+
+  // Pre-authorization.
+  //
+  // Pre-authorize source of fund.
+  rpc Preauth (PreauthRequest) returns (PreauthResponse);
+}
+
+// RPC service interface related to configuration, such as configuration schema description.
+service ConfigurationService {
+  // Return a list of required configuration schemas so that RPC caller can send
+  // correct configuration values to RPCs.
+  rpc Configure (ConfigurationRequest) returns (ConfigurationResponse);
+
+  // Validate and activate merchant credential.
+
+  // Some provider requires merchants to be registered before making any payment requests.
+  // Backend should implement this RPC if provider requires merchant registration,
+  // or for validating credentials before further requests.
+  rpc ActivateCredential (ActivateCredentialRequest) returns (ActivateCredentialResponse);
+
+  // Fetch additional credentials from backend.
+  // Some provider may allow the credential via their api upon on-board.
+  rpc FetchCredential (FetchCredentialRequest) returns (FetchCredentialResponse);
+
+  // Inquire the status of credential/registration from provider.
+  rpc InquireCredential (InquireCredentialRequest) returns (InquireCredentialResponse);
+}
+
+// RPC service interface related to the dashboard. It provides additional information for displaying on the dashboard.
+service DashboardService {
+  // Return a list of adjustable fees and payment methods.
+  rpc RetrieveAdjustableFee (AdjustableFeeRetrieveRequest) returns (AdjustableFeeRetrieveResponse);
+}
+
+// RPC service interface related to payment, such as payment process, inquiry, etc.
+service PaymentService {
+  // Validate and prepare payment data for future processing, such as payment references,
+  // and optionally call provider API to prepare payment data in their system.
+  // It determines what "action" merchant should take for this payment by returning
+  // `EnrollResponse.action`.
+  //
+  // This RPC must not do anything that results in customer credit loss or reserve.
+  // Such action must be implemented in `Process` RPC.
+  rpc Enroll (EnrollRequest) returns (EnrollResponse);
+
+  // Process payment and transfer credit from customer to merchant.
+  //
+  // Some provider may allow processing payment in "authorize" manner, which
+  // means credit is deducted from customer but not yet provided to merchant.
+  // Merchant needs to manually `Capture` payment later to get the credit.
+  // Backend of such provider MUST implement `Capture` RPC as well.
+  //
+  // Some provider may process payment in background and notify a result through
+  // different channels such as `Callback` or `Inquiry`. Backend of such provider
+  // may implement this RPC as no-operation.
+  rpc Process (ProcessRequest) returns (ProcessResponse);
+
+  // Capture authorized yet uncaptured payment (see `Process` RPC for more detail).
+  //
+  // Backend should only implement this RPC if provider supports manual capture,
+  // or else return `UNIMPLEMENTED` error.
+  rpc Capture (CaptureRequest) returns (CaptureResponse);
+
+  // MultiCapture authorized yet uncaptured payment (see `Process` RPC for more detail).
+  // Use with multi capture flow.
+  //
+  // Backend should only implement this RPC if provider supports manual capture,
+  // or else return `UNIMPLEMENTED` error.
+  rpc MultiCapture (MultiCaptureRequest) returns (MultiCaptureResponse);
+
+  // Interpret callback from provider and return payment data to Omise who
+  // reconciles it with current payment data.
+  //
+  // Backend should return `UNIMPLEMENTED` error if provider does not provide callback mechanism.
+  rpc Callback (CallbackRequest) returns (CallbackResponse);
+
+  // Reverse enrolled yet unauthorized payment (see `Enroll` RPC for more detail).
+  //
+  // Backend should implement this RPC if provider does not support manual
+  // capture but supports payment cancellation. Otherwise returns `UNIMPLEMENTED` error.
+  rpc Expire (ExpireRequest) returns (ExpireResponse);
+
+  // Reverse authorized yet uncaptured payment (see `Process` RPC for more detail).
+  //
+  // Backend should only implement this RPC if provider supports manual capture,
+  // or else return `UNIMPLEMENTED` error.
+  rpc Reverse (ReverseRequest) returns (ReverseResponse);
+
+  // Inquire data of the given payment.
+  rpc Inquire (InquiryRequest) returns (InquiryResponse);
+}
+
+// RPC service interface related to reconciliation.
+service ReconciliationService {
+  rpc DownloadReconciliationFile(DownloadReconciliationFileRequest) returns (stream DownloadReconciliationFileResponse);
+
+  rpc DownloadReconciliationFilePostProcess(DownloadReconciliationFilePostProcessRequest) returns (DownloadReconciliationFilePostProcessResponse);
+
+  rpc ParseReconciliationFile(ParseReconciliationFileRequest) returns (stream ParseReconciliationFileResponse);
+
+  rpc RetrieveReconciliation(ReconciliationRequest) returns (ReconciliationResponse);
+}
+
+service SettlementService {
+  rpc SendSettlement(SendSettlementRequest) returns (SendSettlementResponse);
+  rpc SendExternalSettlement(SendExternalSettlementRequest) returns (SendExternalSettlementResponse);
+  rpc GenerateTransactionReport(SendExternalSettlementRequest) returns (SendExternalSettlementResponse);
+
+  // This will query the server to know if a settlement has to take place.
+  // If yes, the `SendSettlement` rpc will be called by the client.
+  rpc NeedsSettlement(NeedsSettlementRequest) returns (NeedsSettlementResponse);
+  rpc ReadSettlementResult(ReadSettlementResultRequest) returns ( stream ReadSettlementResultResponse);
+}
+
+// RPC service interface related to reports
+service ReportService {
+  rpc GenerateMerchantProfileReport(GenerateMerchantProfileReportRequest) returns (GenerateReportResponse);
+  rpc GenerateRefundReport(GenerateRefundReportRequest) returns (GenerateReportResponse);
+}
+
+// RPC service interface related to payment refund.
+service RefundService {
+  // Void a processed yet unsettled payment.
+  //
+  // Backend should implement this RPC if provider supports void payment.
+  rpc Void (RefundRequest) returns (RefundResponse);
+
+  // Backend should implement this RPC if provider supports multi capture void payment.
+  rpc MultiCaptureVoid (MultiCaptureRefundRequest) returns (MultiCaptureRefundResponse);
+
+  // Refund a settled payment.
+  //
+  // Refund the given payment for the specific amount.
+  rpc Refund (RefundRequest) returns (RefundResponse);
+
+  // Backend should implement this RPC if provider supports multi capture refund payment.
+  rpc MultiCaptureRefund (MultiCaptureRefundRequest) returns (MultiCaptureRefundResponse);
+
+  // Refund a batch of settled payments.
+  //
+  // Refund each given payment for their specific amounts.
+  rpc SendBatchRefund (SendBatchRefundRequest) returns (SendBatchRefundResponse);
+
+  // Interpret callback from provider and return refund data to Omise who
+  // reconciles it with refund payment data.
+  //
+  // Sends data as a stream back to core to process each refund individually.
+  rpc Callback (RefundCallbackRequest) returns (stream RefundCallbackResponse);
+
+  // Inquire refund data of the given payment.
+  rpc Inquire (RefundInquiryRequest) returns (RefundInquiryResponse);
+}
+
+// RPC service interface related to a charge registration
+service LinkedAccountService {
+  rpc Register (LinkedAccountRegisterRequest) returns (LinkedAccountRegisterResponse);
+  rpc Inquire (LinkedAccountInquiryRequest) returns (LinkedAccountInquiryResponse);
+  rpc Callback (LinkedAccountCallbackRequest) returns (LinkedAccountCallbackResponse);
+  rpc Deregister (LinkedAccountDeregisterRequest) returns (LinkedAccountDeregisterResponse);
+}
+
+message ReconciliationRequest {
+  PaymentAdapter payment_adapter = 3;
+
+  enum ReconciliationState {
+    GET_RECONCILIATION_SUMMARY = 0;
+    GET_RECONCILIATION = 1;
+    GET_FAILED_SETTLEMENT = 2;
+    ARCHIVE_RECONCILIATION_SUMMARY = 3;
+    ARCHIVE_RECONCILIATION = 4;
+    ARCHIVE_FAILED_SETTLEMENT = 5;
+  }
+
+  ReconciliationState state = 1;
+
+  bool live_mode = 2;
+}
+
+message ReconciliationResponse {
+  message Reconciliation {
+      string tracking_id = 1;
+      string transaction_date = 2;
+      Amount amount = 3;
+  }
+  message ReconciliationFile {
+    string file_name = 1;
+    string content = 2;
+  }
+  message ReconciliationAcknowledgement {
+    int64 credit_amount = 1;
+    int64 debit_amount = 2;
+    int64 net_amount = 3;
+    int64 debit_transaction_count = 4;
+    int64 credit_transaction_count = 5;
+    int64 net_transaction_count = 6;
+    string currency_code = 7;
+    google.protobuf.Timestamp settlement_date = 8;
+  }
+
+  repeated Reconciliation reconciliations = 1;
+  repeated ReconciliationFile reconciliation_files = 2;
+  ReconciliationAcknowledgement reconciliation_acknowledgement = 3;
+  repeated ReconciliationAcknowledgement reconciliation_acknowledgement_list = 4;
+}
+
+// Determine what action merchant should do to customer for this payment.
+message Action {
+  // Request the customer to make use of the supplied document. For example,
+  // save and show QR at a bill payment counter, or embed with invoice.
+  message SendDocument {
+    repeated Document documents = 1;
+  }
+
+  // Display message, usually payment instruction, to customer.
+  message DisplayMessage {
+    string message = 1;
+  }
+
+  // Redirect customer to provider website to "authorize" payment.
+  // Practically Omise will build an auto-submitted HTML form that redirects customer with these data.
+  message Redirect {
+    string              form_method = 1; // <form method="...">
+    string              form_action = 2; // <form action="...">
+    map<string, string> form_fields = 3; // <input type="hidden" name="..." value="...">
+  }
+
+  // Provide information for redirecting either to provider or through Omise's pay endpoint.
+  // Preinstallation check flag will determine which flow will be used.
+  message AppRedirect {
+    string  url = 1;
+    bool preinstallation_check = 2;
+    string ios_store_url = 3;
+    string android_store_url = 4;
+  }
+}
+
+// Amount contains monetary value to be processed by backends.
+//
+// The `value` field needs to be used in conjunction with the `divider` field to obtain
+// the real amount. Interpreting these two fields depend on what `currency` we're dealing
+// with. In general the `divider` should tells you what exact unit are stored in the
+// `value` field. For example, these are two ways to say "5.00 USD":
+//
+// * value = 5   and divider = 1    //   5 dollars
+// * value = 500 and divider = 100  // 500 cents
+//
+// And here are three ways to represent "5 ETH":
+//
+// * value = 5          and divider = 1          // 5 Ether
+// * value = 5000000    and divider = 1000000    // 5000000 Szabos
+// * value = 5000000000 and divider = 1000000000 // 5000000000 Gwei
+//
+// Most currencies should have only a single subunit and a constant `divider` and should
+// be representable comfortably inside 64 bits.
+message Amount {
+  int64  value    = 1; // Value of money unit relative to the divider.
+  string currency = 2; // Currency based on ISO 4217.
+  int64  divider  = 3;
+}
+
+message ActivateCredentialRequest {
+  PaymentAdapter payment_adapter = 4;
+
+  Psp psp = 5;
+
+  bool live_mode = 1;
+
+  Credentials credentials = 2;
+
+  map<string, string> backend_configurations = 3;
+
+  Account account = 6;
+}
+
+message ActivateCredentialResponse {
+  BasicResponse basic = 1; // embedded here for extensibility purpose.
+
+  enum ActivationStatus {
+    SUCCESS = 0;
+    FAILED = 1;
+    PENDING = 2;
+  }
+  ActivationStatus activation_status = 2;
+
+  // Failure reason. Only set when activation_status = FAILED.
+  omise.proto.backend.errors.Failure failure = 3;
+}
+
+// BasicRequest is the most basic message containing minimal required data for every RPC.
+// It is present in every RPC request unless stated otherwise in RPC comment.
+//
+// For extensibility, this message should not be used directly.
+message BasicRequest {
+  // Credentials of individual merchant to provider API, such as merchant id and password,
+  // API key, private and public keys.
+  //
+  // See ConfigurationResponse.profile_credential_fields for more detail.
+  Credentials credentials = 2;
+
+  // Backend configurations which are specified from Omise according to
+  // backend_configuration_fields given during Configure calls.
+  //
+  // See ConfigurationResponse.backend_configuration_fields for more detail.
+  map<string, string> backend_configurations = 3;
+
+  // Profile configurations which are specified from Omise according to
+  // profile_configuration_fields given during Configure calls.
+  //
+  // See ConfigurationResponse.profile_configuration_fields for more detail.
+  map<string, string> profile_configurations = 4;
+
+  // Marketing code information.
+  // This value is from contract engine in configurations.
+  //
+  // Backend will fallback to this value when the credentials are not set.
+  string marketing_code = 5;
+
+  // Customer absorbed interest rate information.
+  // This value is from contract engine in configurations.
+  //
+  // Backend will fallback to this value when the credentials are not set.
+  string customer_absorbed_interest_rate = 6;
+
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  bytes backend_state = 1;
+}
+
+// BasicResponse is the most basic message containing processed data from every RPC.
+// It is present in every RPC response.
+//
+// For extensibility, this message should not be used directly.
+message BasicResponse {
+  // Raw response body from provider API. It is used by Omise to trace and debug problem,
+  // and never shown to merchant.
+  //
+  // Any response from backend that processes credit card should come through Omise Vault
+  // and have sensitive data filtered according to PCI-DSS standard.
+  string body = 1;
+
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  bytes backend_state = 2;
+}
+
+message CallbackRequest {
+  PaymentAdapter payment_adapter = 4;
+
+  BasicRequest basic = 1; // embedded here for extensibility purpose.
+
+  Payment payment = 5;
+
+  Psp psp = 6;
+
+  // Callback payload from provider.
+  bytes callback_payload = 2;
+
+  bool live_mode = 3;
+
+}
+
+message CallbackResponse {
+  BasicResponse basic = 1; // embedded here for extensibility purpose.
+
+  PaymentReference payment_references = 3;
+
+  // Payment state in provider system.
+  enum PaymentState {
+    UNKNOWN = 0;
+    PENDING = 1;
+    PAID    = 2;
+    FAILED  = 3;
+  }
+  PaymentState payment_state = 4;
+
+  // Failure reason. Only set when payment_state = FAILED.
+  omise.proto.backend.errors.Failure failure = 5;
+
+  // Omise will triple-check that it matches with amount in Omise system before
+  // accepting response, so this field must be a value in callback body from
+  // provider and not from Omise.
+  Amount amount = 6;
+
+  // Payment reference appears in reconciliation file from provider.
+  // These fields must be unique enough to distinguish each payment.
+  repeated string reconciliation_references = 7;
+
+  // The last refundable and voidable datetime (inclusive) of the payment.
+  google.protobuf.Timestamp last_refundable_date = 8;
+  google.protobuf.Timestamp last_voidable_date = 16;
+
+  // Additional payment data to be displayed to merchant.
+  // This field is for display purpose only.
+  map<string, string> display_data = 9;
+
+  // Credit card information.
+  // Any backend should return these values if available.
+  string card_first_digits = 10;
+  string card_last_digits = 11;
+  string card_holder_name = 13;
+  string card_expiration_month = 14;
+  string card_expiration_year = 15;
+
+  // For non card payments
+  string buyer_name = 17;
+
+  SystemMetadata system_metadata = 12;
+
+  // If override_current_fee, charge will use new fee from adjusted_fee
+  bool override_current_fee = 18;
+  Fee adjusted_fee = 19;
+
+  // Map response for payment processor
+  string raw_response_code = 20;
+  string merchant_advice_code = 21;
+
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  PaymentResponse payment = 2;
+}
+
+message CaptureRequest {
+  PaymentAdapter payment_adapter = 5;
+
+  BasicRequest basic = 1; // embedded here for extensibility purpose.
+
+  Payment payment = 3;
+
+  Psp psp = 6;
+
+  // Amount to capture. To support partial amount capture in future.
+  Amount amount = 2;
+
+  bool live_mode = 4;
+}
+
+message CaptureResponse {
+  BasicResponse basic = 1; // embedded here for extensibility purpose.
+
+  PaymentReference payment_references = 3;
+
+  // Failure reason. Only set when capture fails.
+  omise.proto.backend.errors.Failure failure = 4;
+
+  // Payment reference appears in reconciliation file from provider.
+  // These fields must be unique enough to distinguish each payment.
+  repeated string reconciliation_references = 5;
+
+  // The last refundable and voidable datetime (inclusive) of the payment.
+  google.protobuf.Timestamp last_refundable_date = 6;
+  google.protobuf.Timestamp last_voidable_date = 8;
+
+  // Additional payment data to be displayed to merchant.
+  // This field is for display purpose only.
+  map<string, string> display_data = 7;
+
+  // If override_current_fee, charge will use new fee from adjusted_fee
+  bool override_current_fee = 9;
+  Fee adjusted_fee = 10;
+
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  PaymentResponse payment = 2;
+  string acquirer_reference_number = 11;
+}
+
+message MultiCaptureRequest {
+  PaymentAdapter payment_adapter = 5;
+
+  BasicRequest basic = 1; // embedded here for extensibility purpose.
+
+  Payment payment = 3;
+  Capture capture = 7;
+
+  bool is_final_capture = 8;
+  int32 total_successful_capture = 9;
+
+  Psp psp = 6;
+
+  // Amount to capture. To support partial amount capture in future.
+  Amount amount = 2;
+
+  bool live_mode = 4;
+}
+
+message MultiCaptureResponse {
+  BasicResponse basic = 1; // embedded here for extensibility purpose.
+
+  PaymentReference payment_references = 3;
+
+  // Failure reason. Only set when capture fails.
+  omise.proto.backend.errors.Failure failure = 4;
+
+  // Payment reference appears in reconciliation file from provider.
+  // These fields must be unique enough to distinguish each payment.
+  repeated string reconciliation_references = 5;
+
+  // The last refundable and voidable datetime (inclusive) of the payment.
+  google.protobuf.Timestamp last_refundable_date = 6;
+  google.protobuf.Timestamp last_voidable_date = 8;
+
+  // Additional payment data to be displayed to merchant.
+  // This field is for display purpose only.
+  map<string, string> display_data = 7;
+
+  // If override_current_fee, charge will use new fee from adjusted_fee
+  bool override_current_fee = 9;
+  Fee adjusted_fee = 10;
+
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  PaymentResponse payment = 2;
+}
+
+message ConfigurationRequest {
+  PaymentAdapter payment_adapter = 2;
+
+  bool live_mode = 1;
+
+  Psp psp = 3;
+}
+
+message ConfigurationResponse {
+  // A map of backend configuration field name (key) and its description (value).
+  // This map is used to explain required backend configuration to Omise admin,
+  // who then fills in each field's value. These values then are sent in
+  // BasicRequest.backend_configurations field in every RPC request.
+  //
+  // For example, if this field contains map<"api_url", "Provider API URL">
+  // and Omise admin sets its value to "https://api.provider.com",
+  // BasicRequest.backend_configurations field will contain map<"api_url", "https://api.provider.com">.
+  //
+  // The map key should be in "lower_snake_case" and the map value should be
+  // "Short and Descriptive Explanation".
+  map<string, string> backend_configuration_fields = 1;
+
+  // A map of merchant configuration field name (key) and its description (value).
+  // It is payment configuration of individual merchant, such as interest rate or allowed
+  // installment terms.
+  //
+  // This field will be corresponded to BasicRequest.profile_configurations
+  // For example, if this field contains map<"merchant_type", "Merchant Type">
+  // and Omise admin sets its value to "0001",
+  // BasicRequest.profile_configurations will contain map<"merchant_type", "0001">.
+  map<string, string> profile_configuration_fields = 2;
+
+  // A map of merchant credential field name (key) and its description (value).
+  // This map is used to explain required merchant credential to Omise admin,
+  // who then fills in each field's value. These values then are sent in
+  // BasicRequest.credentials field in every RPC request.
+  //
+  // For example, if this field contains map<"api_key", "Merchant API Key">
+  // and Omise admin sets its value to "verysecurekey123",
+  // BasicRequest.credentials.data will contain map<"api_key", "verysecurekey123">.
+  //
+  // The map key should be in "lower_snake_case" and the map value should be
+  // "Short and Descriptive Explanation".
+  map<string, string> profile_credential_fields = 3;
+
+  // Same as profile_credential_fields but will only be configurable and visible at PSP level
+  // and will apply automatically to all Account-level credentials under that PSP.
+  // That is, values in BasicRequest.credentials will contain both psp_credential_fields
+  // and profile_credential_fields.
+  //
+  // Sample use case is when a backend requires credentials that may differ per PSP
+  // but can still be shared for all accounts under that PSP, so that admin can set
+  // different profile_credential_fields without affecting the shared psp_credential_fields.
+  map<string, string> psp_credential_fields = 5;
+
+  //preauth_recurring_fields are the fields added to allow Pre-authorization Merchant ID
+  // for the purpose of card verification. These fields will appear only when the recurring
+  // checkbox is enabled.
+  map<string, string> preauth_recurring_fields = 6;
+
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  bool acs_enabled = 4;
+}
+
+message Credentials {
+  string              merchant_id = 1; // Merchant ID to provider API. Always present.
+  map<string, string> data        = 2; // Additional merchant credentials listed in ConfigurationResponse.profile_credential_fields
+  map<string, string> three_ds_data = 3; // Credentials specifically for different card scheme.
+}
+
+message Account {
+  string statement_name = 1;
+  string website_url = 2;
+  string entity_type = 3;
+}
+
+message Document {
+  // Filename for displaying to customer, for example "instruction.html" or "barcode.png".
+  // Filenames should be unique inside a single request or response message.
+  // Receiver of document data should prepend a secure-randomly generated unique string
+  // if the document needs to be stored.
+  string filename = 1;
+  google.protobuf.Timestamp expiration_date = 2;
+
+  string content_type = 3;
+  bytes content = 4;
+}
+
+message EnrollRequest {
+  PaymentAdapter payment_adapter = 7;
+
+  BasicRequest basic = 1; // embedded here for extensibility purpose.
+
+  Payment payment = 2;
+
+  Psp psp = 8;
+
+  // Some backends require public key in order to tokenize the card.
+  //
+  // Why put it here and not in configurations or BasicRequest?
+  // The only place that makes use of this public key is an Enroll request.
+  // If in the future there are other requests requiring this data,
+  // we may reconsider and move it to appropriate place instead.
+  string merchant_public_key = 5;
+
+  bool live_mode = 6;
+
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  oneof source {
+    PaymentSource.Card    card    = 3;
+    PaymentSource.Generic generic = 4;
+  }
+}
+
+message EnrollResponse {
+  BasicResponse basic = 1; // embedded here for extensibility purpose.
+
+  // Can be nil if no action is required from customer to process payment.
+  oneof action {
+    Action.Redirect       redirect        = 3;
+    Action.SendDocument   send_document   = 4;
+    Action.DisplayMessage display_message = 5;
+    Action.AppRedirect    app_redirect    = 12;
+  }
+
+  PaymentReference payment_references = 6;
+
+  google.protobuf.Timestamp expires_at = 13;
+  string raw_qr_data = 14;
+
+  // Failure reason. Only set when enroll fails.
+  omise.proto.backend.errors.Failure failure = 7;
+
+  // Additional payment data to be displayed to merchant.
+  // This field is for display purpose only.
+  map<string, string> display_data = 8;
+
+  // The backend that processes the ACS payment should return these values,
+  // acs_url, pa_req and xid.
+  string acs_url = 9;
+  string pa_req = 10;
+  string xid = 11;
+
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  PaymentResponse payment = 2;
+}
+
+message InquiryRequest {
+  PaymentAdapter payment_adapter = 4;
+
+  BasicRequest basic = 1; // embedded here for extensibility purpose.
+
+  Payment payment = 2;
+
+  Psp psp = 5;
+
+  bool live_mode = 3;
+}
+
+message InquiryResponse {
+  BasicResponse basic = 1; // embedded here for extensibility purpose.
+
+  PaymentReference payment_references = 3;
+
+  // Payment state in provider system.
+  enum PaymentState {
+    UNKNOWN    = 0;
+    PENDING    = 1;
+    AUTHORIZED = 2;
+    PAID       = 3;
+    FAILED     = 4;
+    REVERSED   = 5;
+  }
+  PaymentState payment_state = 4;
+
+  // Failure reason. Only set when payment_state = FAILED.
+  omise.proto.backend.errors.Failure failure = 5;
+
+  // Omise will triple-check that it matches with amount in Omise system before
+  // accepting response, so this field must be a value in query body from
+  // provider and not from Omise.
+  Amount amount = 6;
+
+  // Payment reference appears in reconciliation file from provider.
+  // These fields must be unique enough to distinguish each payment.
+  repeated string reconciliation_references = 7;
+
+  // The last refundable and voidable datetime (inclusive) of the payment.
+  google.protobuf.Timestamp last_refundable_date = 8;
+  google.protobuf.Timestamp last_voidable_date = 16;
+
+  // Additional payment data to be displayed to merchant.
+  // This field is for display purpose only.
+  map<string, string> display_data = 9;
+
+  // Credit card information.
+  // Any backend should return these values if available.
+  string card_first_digits = 10;
+  string card_last_digits = 11;
+  string card_holder_name = 13;
+  string card_expiration_month = 14;
+  string card_expiration_year = 15;
+
+  // For non card payments
+  string buyer_name = 17;
+
+  SystemMetadata system_metadata = 12;
+
+  // If override_current_fee, charge will use new fee from adjusted_fee
+  bool override_current_fee = 18;
+  Fee adjusted_fee = 19;
+
+  // Map response for payment processor
+  string raw_response_code = 20;
+  string merchant_advice_code = 21;
+
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  PaymentResponse payment = 2;
+}
+
+message Payment {
+  // Unique payment id generated by Omise. It is a random string containing
+  // lowercase alphanumeric and `_` characters, and globally unique in Omise system.
+  // Backend may reuse the whole string as an unique payment reference to provider API,
+  // but its length is not guaranteed.
+  string                    uid         = 1;
+  Amount                    amount      = 2;
+  string                    description = 3;
+  google.protobuf.Timestamp created_at  = 4;
+
+  // only use this if your backend supports allowing expiry to be set by our
+  // merchant from the charge api.
+  google.protobuf.Timestamp expires_at = 20;
+
+  // `nil` in EnrollRequest since backend will generate them in Enroll RPC.
+  PaymentReference payment_references = 10;
+
+  PaymentSource payment_source = 11;
+
+  ThreeDSData three_ds_data = 18;
+
+  // each of the following field(s) is stored as a column in payment table, it may
+  // be consumed by fraud detection or other systems.
+  string ip_address = 5;
+  bool   is_acs     = 12;
+
+  // Indicate whether a payment is a part of recurring payments or not.
+  bool   is_recurring = 13;
+
+  //Indicate whether a payment is made by an account that has it's recurring state true or not.
+  bool is_account_recurring = 33;
+
+  // each of the following field(s) is derived from various places and is sent to
+  // keep a point in time snapshot so it can be updated without affecting ongoing
+  // payment
+  //
+  // since protocol buffer is extensible, do not use map<string, string> but add
+  // more fields when needed
+  string email                  = 6;
+  string website_url            = 26;
+  string merchant_category_code = 7;
+  string tax_id                 = 8;
+  string statement_name         = 9;
+  bool   is_settled             = 14;
+  bool   manual_capture         = 15;
+  string return_uri             = 16;
+  string account_id             = 35;
+  string account_uid            = 29;
+
+  // Business address
+  string address                = 25;
+  string city                   = 37;
+  string merchant_country_code  = 38;
+  string merchant_postal_code   = 28;
+
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  // PSP country code
+  string country_code           = 22;
+
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  bool live_mode = 17;
+
+  // applies only to Visa and Mastercard
+  bool skip_avs  = 19;
+
+  enum AuthorizationType {
+    UNKNOWN    = 0;
+    PRE_AUTH     = 1;
+    FINAL_AUTH   = 2;
+  }
+  // optional param , null by default (Values = final_auth / pre_auth ) (scope - CYBS only)
+  // For pre_auth - (Must be capture=false), Any amount captured within 30 days
+  // final_auth - charge is final and captured within 7 days
+  AuthorizationType authorization_type = 21;
+
+  bool is_schedule = 23;
+
+	//optional param, null by default. false if use 3dsv2
+  bool manual_three_ds = 24;
+  string metadata = 27;
+  //below are optional param, require only for payment processor (worldline) payments
+  enum TransactionIndicator {
+    NONE = 0;
+    CIT = 1;
+    MIT = 2;
+  }
+
+  TransactionIndicator transaction_indicator = 30;
+
+  enum RecurringReason {
+    NOT_SPECIFIED = 0;
+    UNSCHEDULED = 1;
+    STANDING_ORDER = 2;
+    SUBSCRIPTION = 3;
+    INSTALLMENT = 4;
+    PARTIAL_SHIPMENT = 5;
+    DELAYED_CHARGE = 6;
+    NO_SHOW = 7;
+    RESUBMISSION = 8;
+  }
+
+  RecurringReason recurring_reason = 31;
+
+  string scheme_transaction_identifier = 32;
+  string status = 36;
+  string charge_uid = 39;
+
+  // optional: apply only to Visa
+  // to be deprecated
+  bool enabled_stored_digital_wallet = 40;
+
+  // optional: use to pass expires_at to the backend
+  google.protobuf.Timestamp default_expires_at = 41;
+
+  enum EnabledDigitalWallet {
+    DEFAULT = 0;
+    STORED = 1;
+    STAGED = 2;
+  }
+
+  // optional: apply only to Visa
+  EnabledDigitalWallet enabled_digital_wallet = 42;
+
+  string id = 43;
+}
+
+message ExternalPayment {
+  // Unique payment id generated by Omise. It is a random string containing
+  // lowercase alphanumeric and `_` characters, and globally unique in Omise system.
+  // Backend may reuse the whole string as an unique payment reference to provider API,
+  // but its length is not guaranteed.
+  string                    uid         = 1;
+  Amount                    amount      = 2;
+  string                    description = 3;
+  google.protobuf.Timestamp created_at  = 4;
+
+  // only use this if your backend supports allowing expiry to be set by our
+  // merchant from the charge api.
+  google.protobuf.Timestamp expires_at = 20;
+
+  // `nil` in EnrollRequest since backend will generate them in Enroll RPC.
+  PaymentReference payment_references = 10;
+
+  PaymentSource payment_source = 11;
+
+  ThreeDSData three_ds_data = 18;
+
+  // each of the following field(s) is stored as a column in payment table, it may
+  // be consumed by fraud detection or other systems.
+  string ip_address = 5;
+  bool   is_acs     = 12;
+
+  // Indicate whether a payment is a part of recurring payments or not.
+  bool   is_recurring = 13;
+
+  //Indicate whether a payment is made by an account that has it's recurring state true or not.
+  bool is_account_recurring = 33;
+
+  // each of the following field(s) is derived from various places and is sent to
+  // keep a point in time snapshot so it can be updated without affecting ongoing
+  // payment
+  //
+  // since protocol buffer is extensible, do not use map<string, string> but add
+  // more fields when needed
+  string email                  = 6;
+  string website_url            = 26;
+  string merchant_category_code = 7;
+  string tax_id                 = 8;
+  string statement_name         = 9;
+  bool   is_settled             = 14;
+  bool   manual_capture         = 15;
+  string return_uri             = 16;
+  string account_id             = 35;
+  string account_uid            = 29;
+
+  // Business address
+  string address                = 25;
+  string city                   = 37;
+  string merchant_country_code  = 38;
+  string merchant_postal_code   = 28;
+
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  // PSP country code
+  string country_code           = 22;
+
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  bool live_mode = 17;
+
+  // applies only to Visa and Mastercard
+  bool skip_avs  = 19;
+
+  enum AuthorizationType {
+    UNKNOWN    = 0;
+    PRE_AUTH     = 1;
+    FINAL_AUTH   = 2;
+  }
+  // optional param , null by default (Values = final_auth / pre_auth ) (scope - CYBS only)
+  // For pre_auth - (Must be capture=false), Any amount captured within 30 days
+  // final_auth - charge is final and captured within 7 days
+  AuthorizationType authorization_type = 21;
+
+  bool is_schedule = 23;
+
+	//optional param, null by default. false if use 3dsv2
+  bool manual_three_ds = 24;
+  string metadata = 27;
+  //below are optional param, require only for payment processor (worldline) payments
+  enum TransactionIndicator {
+    NONE = 0;
+    CIT = 1;
+    MIT = 2;
+  }
+
+  TransactionIndicator transaction_indicator = 30;
+
+  enum RecurringReason {
+    NOT_SPECIFIED = 0;
+    UNSCHEDULED = 1;
+    STANDING_ORDER = 2;
+    SUBSCRIPTION = 3;
+    INSTALLMENT = 4;
+    PARTIAL_SHIPMENT = 5;
+    DELAYED_CHARGE = 6;
+    NO_SHOW = 7;
+    RESUBMISSION = 8;
+  }
+
+  RecurringReason recurring_reason = 31;
+
+  string scheme_transaction_identifier = 32;
+  string status = 36;
+  string acquirer_reference_number = 34;
+  string charge_uid = 39;
+
+  // For KGP transaction report
+  Amount fee_amount = 40;
+  Amount fee_vat_amount = 41;
+  Amount installment_interest_amount = 42;
+  Amount installment_interest_vat = 43;
+  Amount net_amount = 44;
+  bool reversed = 45;
+  bool voided = 46;
+  string failure_code = 47;
+  string failure_message = 48;
+  Amount refunded_amount = 49;
+  int64 refunded_count = 50;
+  google.protobuf.Timestamp latest_refunded_at = 51;
+  string card_id = 52;
+  string card_issuer = 53;
+  string card_type = 54;
+  string card_issuing_country = 55;
+  string merchant_type = 56;
+  string interest_absorption = 57;
+
+  enum EnabledDigitalWallet {
+    DEFAULT = 0;
+    STORED = 1;
+    STAGED = 2;
+  }
+
+  EnabledDigitalWallet enabled_digital_wallet = 58;
+  string card_bin = 59;
+  string card_last_digits = 60;
+  repeated string reconciliation_references = 61;
+}
+
+// Unique reference(s) to a payment record in provider system.
+// Omise have no knowledge about these but will maintain uniqueness of `reference_number_1` field.
+message PaymentReference {
+  // Required. Must be unique in backend scope.
+  string reference_number_1 = 1;
+
+  // All following fields are optional and can be duplicate between two payments
+  // as long as `reference_number_1` is not.
+  string reference_number_2 = 2;
+  string reference_number_3 = 3;
+  string reference_number_4 = 5;
+  string reference_number_5 = 6;
+  string reference_number_6 = 7;
+
+  string batch_settlement_reference = 4;
+}
+
+// DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+message PaymentResponse {
+  PaymentReference references = 1;
+
+  enum PaymentState {
+    UNKNOWN    = 0;
+    ENROLLED   = 1;
+    AUTHORIZED = 2;
+    PAID       = 3;
+    FAILED     = 4;
+    REVERSED   = 5;
+  }
+  PaymentState payment_state = 2;
+
+  omise.proto.backend.errors.Failure failure = 3;
+
+  Amount amount = 4;
+
+  repeated string reconciliation_references = 5;
+
+  google.protobuf.Timestamp last_refundable_date = 6;
+  google.protobuf.Timestamp last_voidable_date = 8;
+
+  map<string, string> display_data = 7;
+}
+
+// Customer references required by provider API to make a payment.
+// May contain one or many values required by provider API.
+message PaymentSource {
+  // Credit card data
+  message Card {
+    enum CardBrand {
+      UNKNOWN     = 0;
+      VISA        = 1;
+      MASTER_CARD = 2;
+      JCB         = 3;
+      AMEX        = 4;
+      DISCOVER    = 5;
+      DINERS_CLUB = 6;
+      MAESTRO     = 7;
+      UNIONPAY    = 8;
+    }
+
+    CardBrand brand            = 1;
+    int32     expiration_month = 2;
+    int32     expiration_year  = 3;
+    string    holder_name      = 4; // e.g. John Snow
+
+    // Card number, PAN (Payment Account Number).
+    //
+    // A card number required to create a payment. Only available for new PCI
+    // card backends.
+    string number = 15;
+
+    // Card verification value, a.k.a. CVV, CSC, CVV2, etc.
+    //
+    // A card security code, usually be a 3 digits number on the back of a card.
+    // Only available for new PCI card backends.
+    string security_code = 16;
+
+    // Card fingerprints for different scope e.g., global, account, or bin8
+    map<string, string> fingerprints = 7;
+    string    street1          = 8;
+    string    street2          = 9;
+    string    city             = 10;
+    string    state            = 11;
+    string    postal_code      = 12;
+    string    country          = 13;
+    string    email            = 14;
+
+    // Network Token related
+    string cryptogram = 17;
+    string token_requestor_id = 18;
+
+    // Tokenization related
+    string tokenization_method = 20;
+
+    // card scheme id
+    string scheme_id = 22;
+
+    // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY. USE number INSTEAD.
+    string supercard_id = 5;
+
+    // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY. USE security_code INSTEAD.
+    string security_id = 6;
+
+    // any generic data that will be needed during authorization
+    map<string, string> data = 19;
+
+    string financing = 23;
+  }
+
+  enum PlatformType {
+    WEB     = 0;
+    IOS     = 1;
+    ANDROID = 2;
+  }
+
+  Card   card                = 1;
+  string barcode             = 2;
+  string name                = 3;
+  string email               = 4;
+  string phone_number        = 5;
+  string store_id            = 6;
+  string store_name          = 7;
+  string terminal_id         = 8;
+  string installment_terms   = 9;
+  string bank                = 11;
+  PlatformType platform_type = 13;
+  string absorption_type     = 14;
+  Address shipping           = 15;
+  Address billing            = 16;
+  repeated Item items        = 17;
+  string ip_address          = 19;
+
+  // Payment source type provide to Omise's source API. Always present.
+  string type = 10;
+
+  // Amount that is supplied during a payment source creation.
+  Amount amount = 12;
+
+  // For testmode backends to identify original backend ID.
+  string original_backend_id = 18;
+
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  message Generic {
+    string json = 1;
+  }
+
+  // storing bank account information for making a payment
+  LinkedAccount linked_account = 20;
+
+  // any promotion code provided by provider for each backend
+  string promotion_code = 21;
+
+  // settings for QR payments
+  QRSettings qr_settings = 24;
+}
+
+// Used for payment source addresses such as shipping and billing.
+message Address {
+  string city = 1;
+  string country = 2;
+  string postal_code = 3;
+  string state = 4;
+  string street1 = 5;
+  string street2 = 6;
+}
+
+message QRSettings {
+  enum ImageType {
+    SVG = 0; // Default value
+    PNG = 1;
+    JPEG = 2;
+  }
+
+  ImageType image_type = 1;
+  bool no_header = 2;
+  bool include_raw_data = 3;
+}
+
+message Item {
+  string sku = 1;
+  string category = 2;
+  string name = 3;
+  int32 quantity = 4;
+  int64 amount = 5;
+  string item_uri = 6;
+  string image_uri = 7;
+  string brand = 8;
+}
+
+message Capture {
+  string                    uid         = 1;
+  Amount                    amount      = 2;
+  google.protobuf.Timestamp created_at  = 3;
+
+  PaymentReference payment_references = 4;
+  string metadata = 5;
+}
+
+message PreauthPayloadRequest {
+  PaymentAdapter payment_adapter = 5;
+
+  BasicRequest basic = 1; // embedded here for extensibility purpose.
+
+  Payment payment = 2;
+
+  bool live_mode = 4;
+
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  oneof source {
+    PaymentSource.Card card = 3;
+  };
+}
+
+message PreauthPayloadResponse {
+  // BACKWARD COMPATIBILITY.
+  // A body in json string format. Since protobuf doesn't have an easy way to
+  // have a dynamic type hash, so we decided to make it not over complicate by
+  // using a json string. The server must return a proper JSON string. That
+  // means
+  //
+  //   1. String  - UTF-8 encoded string upto 64K of data.
+  //   2. Integer - IEEE 64-bit signed integers.
+  //   3. Float   - IEEE 754-2008 formatted floating point values.
+  //   4. Boolean - "true" or "false", case-insensitive.
+  //   5. Record  - a.k.a. nested JSON is also possible.
+  //
+  // Every language standard library should already format JSON as a String
+  // correctly. However, in case any doubt, please consult
+  //   - https://tools.ietf.org/html/rfc7159
+  //   - http://json.org
+  string              body        = 1;
+
+  map<string, string> credentials = 2;
+}
+
+message PreauthProcessRequest {
+  PaymentAdapter payment_adapter = 6;
+
+  BasicRequest basic = 1; // embedded here for extensibility purpose.
+
+  Payment payment = 2;
+
+  // pre-authorization response body from acquirer bank
+  string raw_response = 3;
+
+  bool live_mode = 5;
+
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  oneof source {
+    PaymentSource.Card card = 4;
+  };
+}
+
+message PreauthProcessResponse {
+  BasicResponse basic = 1; // embedded here for extensibility purpose.
+
+  // Failure reason. Only set when preauth process fails.
+  omise.proto.backend.errors.Failure failure = 2;
+
+  // Card verification value result.
+  string cvv_result = 3;
+
+  // Map response for payment processor
+  string raw_response_code = 4;
+  string merchant_advice_code = 5;
+  string scheme_transaction_identifier = 6;
+  string auth_code = 7;
+
+  // Support AVS
+  string avs_result = 8;
+}
+
+message PreauthCleanupRequest {
+  PaymentAdapter payment_adapter = 5;
+
+  BasicRequest basic = 1;
+
+  Payment payment = 2;
+
+  // pre-authorization response body from acquirer bank
+  string raw_response = 3;
+
+  bool live_mode = 4;
+}
+
+message PreauthCleanupResponse {
+  BasicResponse basic = 1;
+}
+
+message PreauthRequest {
+  PaymentAdapter payment_adapter = 4;
+
+  BasicRequest basic = 1;
+
+  Payment payment = 2;
+
+  bool live_mode = 3;
+
+  Psp psp = 5;
+}
+
+message PreauthResponse {
+  BasicResponse basic = 1;
+
+  // Failure reason. Only set when pre-authorization fails.
+  omise.proto.backend.errors.Failure failure = 2;
+
+  // any generic data that will be needed after the pre-authorization
+  map<string, string> data = 3;
+
+  // Card verification value result.
+  string cvv_result = 4;
+
+  // Map response for payment processor
+  string raw_response_code = 5;
+  string merchant_advice_code = 6;
+  string scheme_transaction_identifier = 7;
+  string internal_advice_code = 8;
+  string auth_code = 10;
+  // Support AVS
+  string avs_result = 9;
+}
+
+message ThreeDSData {
+  // We should put a link to doc here
+  enum PaResAuthenticationStatus {
+    SUCCESS = 0;
+    CANNOT_PERFORM = 1;
+    FAILED = 2;
+    ATTEMPTED = 3;
+  }
+  PaResAuthenticationStatus status = 1;
+
+  // For Mastercard only
+  // We should put a link to doc here
+  enum UCAFCollectionIndicator {
+    NOT_SUPPORTED = 0;
+    SUPPORTED_NOT_POPULATED = 1;
+    SUPPORTED_POPULATED = 2;
+  }
+  UCAFCollectionIndicator ucaf_collection = 2;
+
+  // Proof of liability shifted.
+  // CAVV or UCAF, up to is it VISA or MASTERCARD
+  // Basically, proof that the identity of card holder is confirmed by someone else.
+  // So no one can blame Omise if that part gone wrong.
+  string authentication_value = 3;
+
+  string xid = 4;
+
+  // Electronic Commerce Indicator
+  string eci = 5;
+
+  // 3DS transaction info fields
+  string trans_status = 6;
+  string three_ds_server_trans_id = 7;
+  string ds_trans_id = 8;
+  string acs_trans_id = 9;
+  string sdk_trans_id = 10;
+  string three_ds_version = 11;
+  string enrolled_three_ds_v2 = 12;
+  string three_ds_scheme_id = 13;
+}
+
+message ProcessRequest {
+  PaymentAdapter payment_adapter = 7;
+
+  BasicRequest basic = 1; // embedded here for extensibility purpose.
+
+  Payment payment = 4;
+
+  Psp psp = 8;
+
+  // Payload received from provider after customer authorized payment on provider website.
+  // Only present for payment with `Redirect` action.
+  bytes authorization_payload = 2;
+
+  bool live_mode = 6;
+
+  // Indicate if payment should be processed in "authorize" manner.
+  // If provider does not provide manual capture API, this field is always `false`.
+  // Default to `false`.
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY. Use Payment.manual_capture INSTEAD.
+  bool manual_capture = 3;
+
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY. Use Payment.three_ds_data INSTEAD.
+  ThreeDSData three_ds_data = 5;
+}
+
+message ProcessResponse {
+  BasicResponse basic = 1; // embedded here for extensibility purpose.
+
+  PaymentReference payment_references = 3;
+
+  enum PaymentState {
+    UNKNOWN    = 0;
+    PENDING    = 1;
+    AUTHORIZED = 2; // Processed in "authorize" manner (ProcessRequest.manual_capture = true)
+    PAID       = 3;
+    FAILED     = 4;
+  }
+  PaymentState payment_state = 4;
+
+  google.protobuf.Timestamp expires_at = 18;
+
+  // Failure reason. Only set when payment_state = FAILED.
+  omise.proto.backend.errors.Failure failure = 5;
+
+  // Payment reference appears in reconciliation file from provider.
+  // These fields must be unique enough to distinguish each payment.
+  repeated string reconciliation_references = 6;
+
+  // The last refundable and voidable datetime (inclusive) of the payment.
+  google.protobuf.Timestamp last_refundable_date = 7;
+  google.protobuf.Timestamp last_voidable_date = 22;
+
+  // Additional payment data to be displayed to merchant.
+  // This field is for display purpose only.
+  map<string, string> display_data = 8;
+
+  // Credit card information.
+  // Any backend should return these values if available.
+  string card_first_digits = 9;
+  string card_last_digits = 10;
+  string card_holder_name = 19;
+  string card_expiration_month = 20;
+  string card_expiration_year = 21;
+
+  // For non card payments
+  string buyer_name = 23;
+
+  // The payer authentication information for ACS (3-D Secure) payment.
+  // The backend that processes the ACS payment should return these values.
+  string cavv = 11;
+  string commerce_indicator = 12;
+  string eci_raw = 13;
+  string ucaf_authentication = 14;
+  string ucaf_collection = 15;
+  string xid = 16;
+
+  // The authorization code provided by card issuer when a transaction is approved,
+  // partially approved, or no reason to decline.
+  //
+  // The card issuer will verifies certain conditions, such as
+  // the card holder has sufficient funds, the card has not been reported as lost,
+  // stolen, or counterfeit.
+  //
+  // The Omise admin uses auth_code in case of dispute.
+  string auth_code = 17;
+
+  // If override_current_fee, charge will use new fee from adjusted_fee
+  bool override_current_fee = 24;
+  Fee adjusted_fee = 25;
+
+  // Map response for payment processor
+  string raw_response_code = 26;
+  string merchant_advice_code = 27;
+  // Centralized response code
+  string internal_advice_code = 28;
+
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  PaymentResponse payment = 2;
+
+  string scheme_transaction_identifier = 29;
+
+  // Card verification value result.
+  string cvv_result = 30;
+
+  // Transaction Link ID from mastercard
+  string mastercard_link_id = 31;
+
+  // Support AVS
+  string avs_result = 32;
+
+  // [Visa] VDCU Update First Use Indicator
+  bool visa_token_first_time_used = 33;
+
+  string acquirer_reference_number = 34;
+}
+
+message DownloadReconciliationFileRequest {
+  PaymentAdapter payment_adapter = 3;
+
+  string download_url = 1;
+
+  bool live_mode = 2;
+}
+
+message DownloadReconciliationFileResponse {
+  bytes data = 1;
+}
+
+message DownloadReconciliationFilePostProcessRequest {
+  PaymentAdapter payment_adapter = 3;
+
+  string download_url = 1;
+
+  bool live_mode = 2;
+}
+
+message DownloadReconciliationFilePostProcessResponse {
+}
+
+message ParseReconciliationFileRequest {
+  PaymentAdapter payment_adapter = 3;
+
+  string download_url = 1;
+
+  bool live_mode = 2;
+
+  string default_currency = 4;
+
+  string file_extension = 5;
+}
+
+message ParseReconciliationFileResponse {
+  repeated string references = 1;
+  string auth_code = 2;
+  Amount amount = 3;
+  double merchant_discount_rate = 4;
+  Amount merchant_discount_amount = 5;
+  Amount total_fee_amount = 6;
+  Amount installment_merchant_fee_amount = 7;
+  string transaction_date = 8; // This field comes from reconciliation file. Sometimes it's empty and it's not datetime format. So, leave it as String is Okay because this field just use for display on the dashboard only.
+  string merchant_id = 9;
+  bool multi_currency = 10;
+  string first_digits = 11;
+  string last_digits = 12;
+  string settlement_currency = 13; // currency that transaction is settled in
+}
+
+message SendSettlementRequest {
+  PaymentAdapter payment_adapter = 6;
+
+  string   batch_number = 1;
+  string   batch_settlement_id = 7;
+  repeated SettlementRecord settlement_records = 2;
+  map<string, string> backend_configurations = 4;
+
+  bool live_mode = 5;
+
+  message SettlementRecord {
+    string                    type = 1; // "Payment" or "Refund"
+    Credentials               credentials = 2;
+    Payment                   payment = 3;
+    Refund                    refund = 4;
+    google.protobuf.Timestamp captured_at  = 5;
+    repeated Response         responses = 6;
+    string                    original_uid = 7;
+    string                    backend_type = 8;
+    google.protobuf.Timestamp authorized_at = 9;
+
+    message Refund {
+      Amount                    amount      = 1;
+      google.protobuf.Timestamp created_at  = 2;
+      string                    metadata    = 3;
+    }
+
+    // Original responses for a given rpc.
+    message Response {
+      string type = 1; // e.g. "PaymentService.process", "RefundService.refund", etc
+      string body = 2;
+    }
+
+    string                    additional_data = 10;
+  }
+
+  // RESERVED. BasicRequest basic = 3
+  reserved 3;
+  reserved "basic";
+}
+
+message SendSettlementResponse {
+  omise.proto.backend.errors.SendSettlementFailure failure = 1;
+}
+
+message NeedsSettlementRequest {
+  PaymentAdapter payment_adapter = 2;
+
+  bool live_mode = 1;
+}
+
+message NeedsSettlementResponse {
+  bool result = 1;
+}
+
+message ExpireRequest {
+  PaymentAdapter payment_adapter = 4;
+
+  BasicRequest basic = 1; // embedded here for extensibility purpose.
+
+  Payment payment = 2;
+
+  Psp psp = 5;
+
+  bool live_mode = 3;
+}
+
+message ExpireResponse {
+  BasicResponse basic = 1; // embedded here for extensibility purpose.
+
+  // Failure reason. Only set when expiring fails.
+  omise.proto.backend.errors.Failure failure = 2;
+
+  // Map response for payment processor
+  string raw_response_code = 3;
+  string merchant_advice_code = 4;
+}
+
+message ReverseRequest {
+  PaymentAdapter payment_adapter = 4;
+
+  BasicRequest basic = 1; // embedded here for extensibility purpose.
+
+  Payment payment = 2;
+
+  Psp psp = 5;
+
+  bool live_mode = 3;
+
+  bytes process_payload =6;
+}
+
+message ReverseResponse {
+  BasicResponse basic = 1; // embedded here for extensibility purpose.
+
+  // Failure reason. Only set when reverse fails.
+  omise.proto.backend.errors.Failure failure = 3;
+
+  // Additional payment data to be displayed to merchant.
+  // This field is for display purpose only.
+  map<string, string> display_data = 4;
+
+  // Map response for payment processor
+  string raw_response_code = 5;
+  string merchant_advice_code = 6;
+
+  // Map internal code for PP-API client
+  string internal_advice_code = 7;
+
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  PaymentResponse payment = 2;
+
+  // Map field 38 to auth_code for PP-API client
+  string auth_code = 8;
+  
+  // Map response for payment processor
+  string scheme_transaction_identifier = 9;
+}
+
+message RefundRequest {
+  PaymentAdapter payment_adapter = 5;
+
+  BasicRequest basic = 1; // embedded here for extensibility purpose.
+
+  Payment payment = 3;
+
+  Psp psp = 7;
+
+  Amount refund_amount = 2;
+
+  bool live_mode = 4;
+
+  // only populated in refund requests, not voids
+  string refund_uid = 6;
+
+  bytes process_payload = 8;
+}
+
+message MultiCaptureRefundRequest {
+  PaymentAdapter payment_adapter = 5;
+
+  BasicRequest basic = 1; // embedded here for extensibility purpose.
+
+  Payment payment = 3;
+  Capture capture = 9;
+
+  Psp psp = 7;
+
+  Amount refund_amount = 2;
+
+  bool live_mode = 4;
+
+  // only populated in refund requests, not voids
+  string refund_uid = 6;
+
+  bytes process_payload = 8;
+}
+
+message SendBatchRefundRequest {
+  PaymentAdapter payment_adapter = 3;
+
+  repeated Refund refunds = 2;
+
+  bool live_mode = 1;
+
+  message Refund {
+    Credentials credentials = 1;
+
+    Payment payment = 2;
+
+    Psp psp = 5;
+
+    Amount refund_amount = 3;
+
+    string refund_uid = 4;
+  }
+}
+
+message RefundCallbackRequest {
+  PaymentAdapter payment_adapter = 1;
+
+  // Refund Callback payload from provider.
+  bytes callback_payload = 2;
+
+  bool live_mode = 3;
+
+  // These following fields are optional, works for individual refunds (non-batch) only.
+  // Set by core if refund callback requested with uid, which is used to distinguish each refund.
+  string refund_uid = 4;
+  Credentials credentials = 5;
+}
+
+message RefundInquiryRequest {
+    BasicRequest basic = 1; // embedded here for extensibility purpose.
+
+    Amount refund_amount = 2;
+
+    Payment payment = 3;
+
+    bool live_mode = 4;
+
+    PaymentAdapter payment_adapter = 5;
+
+    string refund_uid = 6;
+
+    Psp psp = 7;
+}
+
+message RefundResponse {
+  BasicResponse basic = 1; // embedded here for extensibility purpose.
+
+  // Required in every refund responses to indicate refund state.
+  enum RefundState {
+    // Unknown refund state. Usually returns when backend has communication
+    // problem with provider, or receive unknown state that need human
+    // intervention.
+    UNKNOWN = 0;
+
+    // Pending refund state. Provider created refund successfully. However,
+    // refund hasn't been processed yet and need to wait for some time until
+    // provider processes the refund.
+    PENDING = 1;
+
+    // Successfully voided payment before settlement took place. Always full
+    // amount, and payment will not be refunded anymore.
+    VOIDED = 2;
+
+    // Successful refund state. Provider created refund successfully. This state
+    // means provider returns money to payer.
+    REFUNDED = 3;
+
+    // Fail refund state. Provider failed to refund.
+    FAILED = 4;
+  }
+
+  RefundState refund_state = 2;
+
+  // Reconciliation reference for refund. These fields must be enough to
+  // distinguish each refund.
+  repeated string reconciliation_references = 3;
+
+  // Refund failure code. Only set when refund_state = FAILED.
+  omise.proto.backend.errors.RefundFailure failure = 4;
+
+  // Map response for payment processor
+  string raw_response_code = 5;
+  string merchant_advice_code = 6;
+
+  // Map internal code for PP-API client
+  string internal_advice_code = 7;
+
+  // Map field 38 to auth_code for PP-API client
+  string auth_code = 8;
+
+  // Settlement reference for refund
+  string merchant_type_code = 9;
+
+  // Map response for payment processor
+  string scheme_transaction_identifier = 10;
+  string cvv_result = 11;
+
+  // Settlement reference for refund
+  string pos_environment_code = 12;
+  string acquirer_reference_number = 13;
+  string metadata = 14;
+}
+
+message MultiCaptureRefundResponse {
+  BasicResponse basic = 1; // embedded here for extensibility purpose.
+
+  // Required in every refund responses to indicate refund state.
+  enum RefundState {
+    // Unknown refund state. Usually returns when backend has communication
+    // problem with provider, or receive unknown state that need human
+    // intervention.
+    UNKNOWN = 0;
+
+    // Pending refund state. Provider created refund successfully. However,
+    // refund hasn't been processed yet and need to wait for some time until
+    // provider processes the refund.
+    PENDING = 1;
+
+    // Successfully voided payment before settlement took place. Always full
+    // amount, and payment will not be refunded anymore.
+    VOIDED = 2;
+
+    // Successful refund state. Provider created refund successfully. This state
+    // means provider returns money to payer.
+    REFUNDED = 3;
+
+    // Fail refund state. Provider failed to refund.
+    FAILED = 4;
+  }
+
+  RefundState refund_state = 2;
+
+  // Reconciliation reference for refund. These fields must be enough to
+  // distinguish each refund.
+  repeated string reconciliation_references = 3;
+
+  // Refund failure code. Only set when refund_state = FAILED.
+  omise.proto.backend.errors.RefundFailure failure = 4;
+
+  // Map response for payment processor
+  string raw_response_code = 5;
+  string merchant_advice_code = 6;
+
+  // Map internal code for PP-API client
+  string internal_advice_code = 7;
+
+  // Map field 38 to auth_code for PP-API client
+  string auth_code = 8;
+
+  // Settlement reference for refund
+  string merchant_type_code = 9;
+
+  // Map response for payment processor
+  string scheme_transaction_identifier = 10;
+  string cvv_result = 11;
+}
+
+message SendBatchRefundResponse {
+  BasicResponse basic = 1; // embedded here for extensibility purpose.
+
+  // Refund failure code. Only set when refund_state = FAILED.
+  omise.proto.backend.errors.RefundFailure failure = 2;
+}
+
+message RefundCallbackResponse {
+  BasicResponse basic = 1; // embedded here for extensibility purpose.
+
+  // Required in every refund responses to indicate refund state.
+  enum RefundState {
+    UNKNOWN = 0;
+    PENDING = 1;
+    VOIDED = 2;
+    REFUNDED = 3;
+    FAILED = 4;
+  }
+
+  RefundState refund_state = 2;
+
+  // Reconciliation reference for refund. These fields must be enough to
+  // distinguish each refund.
+  repeated string reconciliation_references = 3;
+
+  // Refund failure code. Only set when refund_state = FAILED.
+  omise.proto.backend.errors.RefundFailure failure = 4;
+
+  string refund_uid = 5;
+
+  // Map response for payment processor
+  string raw_response_code = 6;
+  string merchant_advice_code = 7;
+}
+
+message RefundInquiryResponse {
+  BasicResponse basic = 1; // embedded here for extensibility purpose.
+
+  // Required in every refund responses to indicate refund state.
+  enum RefundState {
+    UNKNOWN = 0;
+    PENDING = 1;
+    VOIDED = 2;
+    REFUNDED = 3;
+    FAILED = 4;
+  }
+
+  RefundState refund_state = 2;
+
+  // Reconciliation reference for refund. These fields must be enough to
+  // distinguish each refund.
+  repeated string reconciliation_references = 3;
+
+  // Refund failure code. Only set when refund_state = FAILED.
+  omise.proto.backend.errors.RefundFailure failure = 4;
+
+  string refund_uid = 5;
+
+  // Map response for payment processor
+  string raw_response_code = 6;
+  string merchant_advice_code = 7;
+}
+
+message SystemMetadata {
+  message DiscountDetail {
+    Amount discount_amount = 1;
+    string discount_note = 2;
+  }
+
+  // Some backends (UPI QR Payment) need to handle the discount information from third parties and represent it at the merchants.
+  // So we created a new field to store this information and it will be saved in paymentv2. Then, we can send it to our merchant via API response.
+
+  // Discount details is an optional
+  repeated DiscountDetail discount_details = 1;
+
+  // Transaction amount is the amount that will be used in the settlement and Refund.
+  Amount transaction_amount = 2;
+
+  // Cost amount is the amount after the discount and its amount that Payer actually pays for the transaction.
+  Amount cost_amount = 3;
+}
+
+message CapabilityRetrieveRequest {
+  PaymentAdapter payment_adapter = 3;
+
+  bool live_mode = 1;
+
+  BasicRequest basic = 2; // embedded here for extensibility purpose.
+}
+
+message CapabilityRetrieveResponse {
+  // Additional capability data from the backend.
+  // Always sent as a JSON string.
+  string data = 1;
+}
+
+message SourceProcessRequest {
+  PaymentAdapter payment_adapter = 4;
+
+  bool live_mode = 1;
+
+  BasicRequest basic = 2; // embedded here for extensibility purpose.
+
+  PaymentSource payment_source = 3;
+
+  Psp psp = 5;
+}
+
+message SourceProcessResponse {
+  enum Status {
+    SUCCESS = 0;
+    FAILED  = 1;
+  }
+
+  // Sanitized source data.
+  // Always sent as a JSON string.
+  string data = 1;
+
+  // Status of the payment source.
+  Status status = 2;
+
+  // Failure reason. Only set when status is FAILED.
+  string failure_message = 3;
+}
+
+message FetchCredentialRequest {
+  bool live_mode = 1;
+
+  BasicRequest basic = 2; // embedded here for extensibility purpose.
+
+  PaymentAdapter payment_adapter = 3;
+}
+
+message FetchCredentialResponse {
+  // Additional credentials data from the backend.
+  map<string, string> credentials = 1;
+
+  // Failure reason. Only set when fetch credential fails.
+  omise.proto.backend.errors.CredentialFailure failure = 2;
+}
+
+message InquireCredentialRequest {
+  bool live_mode = 1;
+
+  BasicRequest basic = 2; // embedded here for extensibility purpose.
+
+  PaymentAdapter payment_adapter = 3;
+
+  Psp psp = 4;
+}
+
+message InquireCredentialResponse {
+  enum Status {
+    FAILED = 0;
+    PENDING = 1;
+    PARTIAL_SUCCESS = 2;
+    SUCCESS = 3;
+  }
+
+  Status status = 1;
+
+  string data = 2;
+
+  omise.proto.backend.errors.CredentialFailure failure = 3;
+
+  BasicResponse basic = 4;
+}
+
+message PaymentAdapter {
+  string identifier = 1; // Identifier
+
+  bool supports_network_token = 2;
+}
+
+message Psp {
+  string country_code = 1; // ISO 3166 Alpha-2 code
+  string identifier = 2;
+  string name = 3;
+  bool is_internal = 4;
+}
+
+message Fee {
+  double fee_rate = 1;
+  double fee_flat = 2;
+}
+
+message AdjustableFeeRetrieveRequest {
+  PaymentAdapter payment_adapter = 1;
+
+  BasicRequest basic = 2; // embedded here for extensibility purpose.
+
+  Psp psp = 3;
+}
+
+message AdjustableFeeRetrieveResponse {
+  repeated AdjustableFee adjustable_fee_configurations = 1;
+}
+
+message AdjustableFee {
+  string payment_method = 1;
+
+  // If override_current_fee, charge will use new fee from adjusted_fee
+  bool override_current_fee = 2;
+
+  Fee adjusted_fee = 3;
+}
+
+message SendExternalSettlementRequest {
+  PaymentAdapter payment_adapter = 6;
+
+  string   batch_number = 1;
+  string   batch_settlement_id = 7;
+  repeated ExternalSettlementRecord settlement_records = 2;
+  map<string, string> backend_configurations = 4;
+
+  bool live_mode = 5;
+  Credentials credentials = 8;
+  PSP   psp = 9;
+
+  message PSP {
+    string    identifier = 1;
+    string    name = 2;
+  }
+  message ExternalSettlementRecord {
+    string                    type = 1; // "Payment" or "Refund"
+    Credentials               credentials = 2;
+    ExternalPayment           payment = 3;
+    Refund                    refund = 4;
+    google.protobuf.Timestamp captured_at  = 5;
+    repeated Response         responses = 6;
+    string                    original_uid = 7;
+    string                    backend_type = 8;
+    google.protobuf.Timestamp authorized_at = 9;
+
+    message Refund {
+      Amount                    amount      = 1;
+      google.protobuf.Timestamp created_at  = 2;
+      string                    metadata    = 3;
+      bool                      fully_refunded = 4;
+      string                    acquirer_reference_number = 5;
+    }
+
+    // Original responses for a given rpc.
+    message Response {
+      string type = 1; // e.g. "PaymentService.process", "RefundService.refund", etc
+      string body = 2;
+    }
+
+    string                    additional_data = 10; 
+    string exception_report_type = 11;
+  }
+
+  // RESERVED. BasicRequest basic = 3
+  reserved 3;
+  reserved "basic";
+
+  google.protobuf.Timestamp batch_created_at = 10;
+  google.protobuf.Timestamp cutoff_at = 11;
+
+  ReportKind report_kind = 12;
+
+  enum ReportKind {
+    UNKNOWN = 0;
+    KTC_REPORT = 1;
+    KTC_FRAUD_REPORT = 2; // FraudMonitoringReport
+    KGP_REPORT = 3;
+    KTC_EXCEPTION_REPORT = 4;
+  }
+
+  int32 archive_threshold = 13;
+}
+
+message SendExternalSettlementResponse {
+  omise.proto.backend.errors.SendSettlementFailure failure = 1;
+}
+
+message ReadSettlementResultRequest {
+  string date = 1;
+  Credentials credentials = 2;
+}
+
+enum TransactionKind {
+  UNKNOWN = 0;
+  REGULAR = 1;
+  MANUAL = 2;
+  FEE = 3;
+  VAT = 4;
+  PAYOUT = 5;
+}
+
+message ReadSettlementResultResponse {
+  Merchant merchant = 1;
+  string file_name = 2;
+
+  message Merchant {
+    string merchant_id = 1;
+    repeated Transaction transactions = 2;
+  }
+
+  message Transaction {
+    int64 amount = 1;
+    string currency = 2;
+    string reference_id = 3;
+    string remarks = 4;
+    TransactionKind kind = 5;
+  }
+}
+
+// LinkedAccount
+
+message LinkedAccount {
+  string uid = 1;
+  PaymentReference references = 2;
+  google.protobuf.Timestamp created_at = 3;
+  google.protobuf.Timestamp registered_at = 4;
+  string account_number = 5;
+  string return_uri = 6;
+  string type = 7;
+}
+
+// LinkedAccount Register
+
+message LinkedAccountRegisterRequest {
+  PaymentAdapter payment_adapter = 1;
+  bool live_mode = 2;
+  BasicRequest basic = 3; // embedded here for extensibility purpose.
+  LinkedAccount linked_account = 4;
+  string citizen_id = 5;
+  Psp psp = 6;
+  string statement_name = 7;
+}
+
+message LinkedAccountRegisterResponse {
+  BasicResponse basic = 1; // embedded here for extensibility purpose.
+  PaymentReference references = 2;
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  omise.proto.backend.errors.Failure failure = 3;
+  google.protobuf.Timestamp expires_at = 4;
+  omise.proto.backend.errors.LinkedAccountFailure linked_account_failure = 6; // Failure reason. Only set when state = FAILED.
+
+  oneof action {
+    Action.Redirect redirect = 5;
+  }
+}
+
+// LinkedAccount Inquire
+
+message LinkedAccountInquiryRequest {
+  PaymentAdapter payment_adapter = 1;
+  bool live_mode = 2;
+  BasicRequest basic = 3; // embedded here for extensibility purpose.
+  LinkedAccount linked_account = 4;
+  Psp psp = 5;
+  string statement_name = 6;
+}
+
+message LinkedAccountInquiryResponse {
+  enum RegistrationState {
+    UNKNOWN = 0;
+    PENDING = 1;
+    SUCCESSFUL = 2;
+    FAILED = 3;
+  }
+
+  BasicResponse basic = 1; // embedded here for extensibility purpose.
+  RegistrationState state = 2;
+  PaymentReference references = 3;
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  omise.proto.backend.errors.Failure failure = 4;
+  string account_number = 5;
+  omise.proto.backend.errors.LinkedAccountFailure linked_account_failure = 6; // Failure reason. Only set when state = FAILED.
+}
+
+// LinkedAccount Callback
+
+message LinkedAccountCallbackRequest {
+  PaymentAdapter payment_adapter = 1;
+  bool live_mode = 2;
+  BasicRequest basic = 3; // embedded here for extensibility purpose.
+  LinkedAccount linked_account = 4;
+  bytes callback_payload = 5;
+  Psp psp = 6;
+  string statement_name = 7;
+}
+
+message LinkedAccountCallbackResponse {
+  enum RegistrationState {
+    UNKNOWN = 0;
+    PENDING = 1;
+    SUCCESSFUL = 2;
+    FAILED = 3;
+  }
+
+  BasicResponse basic = 1; // embedded here for extensibility purpose.
+  RegistrationState state = 2;
+  PaymentReference references = 3;
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  omise.proto.backend.errors.Failure failure = 4;
+  string account_number = 5;
+  omise.proto.backend.errors.LinkedAccountFailure linked_account_failure = 6; // Failure reason. Only set when state = FAILED.
+}
+
+// LinkedAccount Deregister
+
+message LinkedAccountDeregisterRequest {
+  PaymentAdapter payment_adapter = 1;
+  bool live_mode = 2;
+  BasicRequest basic = 3; // embedded here for extensibility purpose.
+  LinkedAccount linked_account = 4;
+  Psp psp = 5;
+  string statement_name = 6;
+}
+
+message LinkedAccountDeregisterResponse {
+  BasicResponse basic = 1; // embedded here for extensibility purpose.
+  // DEPRECATED. FOR BACKWARD COMPATIBILITY ONLY.
+  omise.proto.backend.errors.Failure failure = 2;
+  omise.proto.backend.errors.LinkedAccountFailure linked_account_failure = 3; // Failure reason. Only set when state = FAILED.
+}
+
+message GenerateMerchantProfileReportRequest {
+  message MerchantProfile {
+    string email = 1;
+    // Entity Type -> corporation / individual
+    string entity_type = 2;
+    string merchant_name = 3;
+    string merchant_id = 4;
+    // Merchant Type -> Master-merchant / Sub-merchant / Regular merchant
+    string merchant_type = 5;
+    string tax_id = 6;
+    string branch_code = 7;
+    string address = 8;
+    string city = 9;
+    // Postal code / Zip code
+    string postal_code_zip_code = 10;
+    string country_code = 11;
+    string website_url = 12;
+    string merchant_category_code = 13;
+    string statement_name = 14;
+    // Status -> active/inactive
+    bool status = 15;
+  }
+
+  repeated MerchantProfile merchant_profiles = 1;
+
+  ReportMetaData report_meta_data = 2;
+}
+
+message GenerateRefundReportRequest {
+  message Refund {
+    // example@example.com
+    string email = 1;
+    // Example Shop
+    string merchant_name = 2;
+    // rfnd_609i8812smfwm8d0g32
+    string uid = 3;
+    Amount amount = 4;
+    // pending/closed
+    string status = 5;
+    bool is_voided = 6;
+    google.protobuf.Timestamp created_at = 7;
+    google.protobuf.Timestamp closed_at = 8;
+    // card/promtpay/shopeepay/atome/etc.
+    string source = 9;
+    Amount charge_amount = 10;
+    Amount fee_amount = 11;
+    Amount fee_vat_amount = 12;
+    string charge_uid = 13;
+    string payment_uid = 14;
+    string card_bin = 15;
+    string card_last_digits = 16;
+    string card_brand = 17;
+    // specific to KGP
+    // kpgw refund id eg: refd_test_22037dfa13c18f92edfde61bf8b57d4539351
+    string backend_refund_id = 18;
+  }
+
+  repeated Refund refunds = 1;
+
+  ReportMetaData report_meta_data = 2;
+}
+
+// ReportMetaData is a common metadata for all reports
+message ReportMetaData {
+  string   batch_number = 1;
+  google.protobuf.Timestamp generated_at = 2;
+  Credentials credentials = 3;
+
+  message PSP {
+    string    identifier = 1;
+    string    name = 2;
+  }
+
+  PSP   psp = 4;
+  int32 archive_threshold = 5;
+  string file_extension = 6;
+  string encryption_mechanism = 7;
+
+  enum StorageProfile {
+    NON_PCI = 0;
+    PCI = 1;
+    CUSTOM = 2;
+  }
+
+  StorageProfile storage_profile = 8;
+  string custom_bucket = 9;
+}
+
+message GenerateReportResponse {
+  omise.proto.backend.errors.Failure failure = 1;
+}
