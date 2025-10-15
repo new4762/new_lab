@@ -8,5 +8,8 @@ certs
 APM-9960
 
 test_files
+batch-update-charge
 
-
+data.txt
+datadog_query.txt
+curl*
