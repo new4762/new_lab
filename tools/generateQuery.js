@@ -10,19 +10,32 @@ const ids = fs.readFileSync(dataFile, 'utf-8')
   .map(line => line.trim())
   .filter(line => line.length > 0);
 
-// Base query parts
-const baseQueryStart = 'index:production service:backend-promptpay-scb container_name:http(';
-const baseQueryEnd = ')';
+// ----------------------------
+// Query 1: @_params.billPaymentRef2
+// ----------------------------
+const baseQueryStart1 = 'index:production service:backend-promptpay-scb container_name:http (';
+const baseQueryEnd1 = ')';
+const orClauses1 = ids.map(id => `@_params.billPaymentRef2:${id}`).join(' OR\n');
+const finalQuery1 = `${baseQueryStart1}\n${orClauses1}\n${baseQueryEnd1}`;
 
-// Generate the OR clauses
-const orClauses = ids.map(id => `@_params.billPaymentRef2:${id}`).join(' OR\n');
+// Write to file
+fs.writeFileSync(path.join(__dirname, 'datadog_query_billPaymentRef2.txt'), finalQuery1);
+console.log('✅ Query 1 written to datadog_query_billPaymentRef2.txt');
 
-// Final query
-const finalQuery = `${baseQueryStart}\n${orClauses}\n${baseQueryEnd}`;
+// ----------------------------
+// Query 2: @request.body.payment.payment_references.reference_number_1
+// ----------------------------
+const baseQueryStart2 = 'index:production service:backend-promptpay-scb @grpc.method:Void (';
+const baseQueryEnd2 = ')';
+const orClauses2 = ids.map(id => `@request.body.payment.payment_references.reference_number_1:${id}`).join(' OR\n');
+const finalQuery2 = `${baseQueryStart2}\n${orClauses2}\n${baseQueryEnd2}`;
 
-// Output to console
-console.log(finalQuery);
+// Write to file
+fs.writeFileSync(path.join(__dirname, 'datadog_query_reference_number_1.txt'), finalQuery2);
+console.log('✅ Query 2 written to datadog_query_reference_number_1.txt');
 
-// Optionally, write to a file
-fs.writeFileSync(path.join(__dirname, 'datadog_query.txt'), finalQuery);
-console.log('Query written to datadog_query.txt');
+// Also print both queries to console
+console.log('\n--- Query 1 ---\n');
+console.log(finalQuery1);
+console.log('\n--- Query 2 ---\n');
+console.log(finalQuery2);

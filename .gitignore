@@ -11,5 +11,5 @@ test_files
 batch-update-charge
 
 data.txt
-datadog_query.txt
+datadog*.txt
 curl*
