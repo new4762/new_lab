@@ -12,6 +12,11 @@ note_msg = '[DRYRUN] ' + {{ .note_msg
   | squote
 }}
 
+refund_uids = {{ .refund_uids
+  | description "All refund uid to mark as void with separate by space"
+  | placeholder "rfnd_1 rfnd_2 rfnd_3"
+  | required "refund_uids is required"
+  | type "text"
+  | squote
+}}
 
-puts user_email
-puts note_msg
