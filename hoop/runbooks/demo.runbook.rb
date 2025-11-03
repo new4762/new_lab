@@ -1,5 +1,4 @@
-ruby -e "puts('{{ .output
-         | type "text"
-         | required "output is required"
-         | default "hello world"
-}}')"
+ruby <<'RUBY'
+  puts demo1
+  puts demo2
+RUBY
