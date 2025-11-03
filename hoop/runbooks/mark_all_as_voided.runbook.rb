@@ -6,6 +6,7 @@ user_email = {{ .user_email
 }}
 
 note_msg = {{ .note_msg
+  | description "Message that will appear in the audit log"
   | type "text"
   | required "note_msg is required"
   | default "Customer requested refund to original payer"
