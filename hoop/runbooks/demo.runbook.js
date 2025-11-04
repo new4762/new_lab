@@ -24,18 +24,3 @@ refund_uids = {{ .refund_uids
 
 
 node - e "console.log(refund_uids)"
-
-// node -e  "console.log({{ .refund_uids
-//   | description "All refund uid to mark as void with separate by space"
-//   | placeholder "rfnd_1 rfnd_2 rfnd_3"
-//   | required "refund_uids is required"
-//   | type "text"
-//   | squote
-// }}.split(' ');) "
-
-// node -e "console.log('{{ .refund_uids
-//   | description \"All refund uid to mark as void separated by space\"
-//   | placeholder \"rfnd_1 rfnd_2 rfnd_3\"
-//   | required \"refund_uids is required\"
-//   | type \"text\"
-// }}'.split(' '))"
