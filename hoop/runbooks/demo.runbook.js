@@ -18,7 +18,7 @@ refund_uids = {{ .refund_uids
   | description "All refund uid to mark as void with separate by space"
   | placeholder "rfnd_1 rfnd_2 rfnd_3"
   | required "refund_uids is required"
-  | pattern "^(rfnd_[A-Za-z0-9]+)(\s+rfnd_[A-Za-z0-9]+)*$"
+  | pattern "^[0-9]+$"
   | type "text"
   | squote
 }}
