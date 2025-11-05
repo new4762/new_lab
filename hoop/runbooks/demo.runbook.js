@@ -23,7 +23,8 @@ node -e  "console.log({{ .refund_uids
 
 node -e  "console.log({{ .send_webhook
   | description "Should send webhook for all update charges?"
-  | default yes
   | type "select"
+  | options "yes" "no"
+  | default "yes"
   | squote
 }})"
