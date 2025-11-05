@@ -20,3 +20,10 @@ node -e  "console.log({{ .refund_uids
   | type "text"
   | squote
 }}.split(' '))"
+
+node -e  "console.log({{ .send_webhook
+  | description "Should send webhook for all update charges?"
+  | default yes
+  | type "select"
+  | squote
+}})"
