@@ -1,4 +1,4 @@
-name: hoop
+version: "3.9"
 
 services:
   db:
@@ -12,12 +12,12 @@ services:
       PGUSER: postgres
     healthcheck:
       test: ["CMD-SHELL", "pg_isready", "-U", "postgres"]
-      interval: "2s"
-      timeout: "30s"
+      interval: 2s
+      timeout: 30s
       retries: 10
-      start_period: "20s"
+      start_period: 20s
   gateway:
-    image: hoophq/hoop
+    image: hoophq/hoop:1.41.3
     environment:
       - GIN_MODE=release
       - POSTGRES_DB_URI=postgres://postgres:postgres@db:5432/hoopdb?sslmode=disable
@@ -26,6 +26,8 @@ services:
       - MSPRESIDIO_ANALYZER_URL=http://presidio-analyzer:3000
       - MSPRESIDIO_ANONYMIZER_URL=http://presidio-anonymizer:3000
     env_file: ".env"
+    # volumes:
+    #   - $HOME/.ssh/local_hoop:/run/secrets/hoop_ssh_key:ro
     command: ["hoop", "start", "gateway"]
     ports:
       - "8009:8009"
@@ -37,17 +39,16 @@ services:
       - hoopdev
     depends_on:
       db:
-        condition: "service_healthy"
+        condition: service_healthy
     healthcheck:
-      test:
-      - CMD-SHELL
-      - |
+      test: |
         PROTO=http; [ -n "$$TLS_KEY" ] && PROTO=https
         curl -k -f $$PROTO://127.0.0.1:8009/api/healthz || exit 1
-      interval: "2s"
-      timeout: "30s"
+      interval: 2s
+      timeout: 30s
       retries: 10
-      start_period: "20s"
+      start_period: 20s
+
   agent:
     image: hoophq/hoopdev
     networks:
@@ -59,8 +60,9 @@ services:
       - HOOP_GATEWAY_URL=ws://gateway:8009
     depends_on:
       gateway:
-        condition: "service_healthy"
+        condition: service_healthy
     command: hoop-default-agent.sh
+
 
   presidio-analyzer:
     image: mcr.microsoft.com/presidio-analyzer:2.2.360
@@ -68,7 +70,7 @@ services:
       - hoopdev
     depends_on:
       gateway:
-        condition: "service_healthy"
+        condition: service_healthy
 
   presidio-anonymizer:
     image: mcr.microsoft.com/presidio-anonymizer:2.2.360
@@ -76,8 +78,7 @@ services:
       - hoopdev
     depends_on:
       gateway:
-        condition: "service_healthy"
+        condition: service_healthy
 
 networks:
   hoopdev:
-

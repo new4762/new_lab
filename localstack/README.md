@@ -25,9 +25,6 @@ aws --endpoint-url=http://localhost:4566 --no-sign-request <service> <command> [
 # Create a Bucket
 aws --endpoint-url=http://localhost:4566 --no-sign-request s3 mb s3://my-temp-bucket
 
-# Example for core bucket
-aws --endpoint-url=http://localhost:4566 --no-sign-request s3 mb s3://omise-core-local
-
 #List Buckets
 aws --endpoint-url=http://localhost:4566 --no-sign-request s3 ls
 
@@ -48,29 +45,29 @@ aws --endpoint-url=http://localhost:4566 --no-sign-request s3 rb s3://my-temp-bu
 ## SQS Commands
 ```bash
 # Create a Queue
-aws --endpoint-url=http://localhost:4566 --no-sign-request sqs create-queue --queue-name low-priority-work-core-queue
+aws --endpoint-url=http://localhost:4566 --no-sign-request sqs create-queue --queue-name {queue_name}
 
 # List Queues
 aws --endpoint-url=http://localhost:4566 --no-sign-request sqs list-queues
 
 # Send a Message
 aws --endpoint-url=http://localhost:4566 --no-sign-request sqs send-message \
-  --queue-url http://localhost:4566/000000000000/low-priority-work-core-queue \
+  --queue-url http://localhost:4566/000000000000/{queue_name} \
   --message-body '{"test":"job"}'
 
 # Receive Messages
 aws --endpoint-url=http://localhost:4566 --no-sign-request sqs receive-message \
-  --queue-url http://localhost:4566/000000000000/low-priority-work-core-queue \
+  --queue-url http://localhost:4566/000000000000/{queue_name} \
   --max-number-of-messages 10
 
 # Delete a Message
 aws --endpoint-url=http://localhost:4566 --no-sign-request sqs delete-message \
-  --queue-url http://localhost:4566/000000000000/low-priority-work-core-queue \
+  --queue-url http://localhost:4566/000000000000/{queue_name} \
   --receipt-handle <RECEIPT_HANDLE>
 
 # Purge a Queue (delete all messages)
 aws --endpoint-url=http://localhost:4566 --no-sign-request sqs purge-queue \
-  --queue-url http://localhost:4566/000000000000/low-priority-work-core-queue
+  --queue-url http://localhost:4566/000000000000/{queue_name}
 ```
 
 

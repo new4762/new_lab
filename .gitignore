@@ -13,3 +13,5 @@ batch-update-charge
 data.txt
 datadog*.txt
 curl*
+*.key
+*README_local.md
